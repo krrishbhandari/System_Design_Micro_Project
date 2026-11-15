@@ -1,4 +1,4 @@
-import { Code2, FileText, Globe, ImageIcon, MessageSquare, Mic, MicOff, Paperclip, Presentation, Send, X, Zap } from 'lucide-react'
+import { AlertTriangle, Clock, Code2, FileText, Globe, ImageIcon, MessageSquare, Mic, MicOff, Paperclip, Presentation, Send, X, Zap } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import sendMessage from '../features/sendMessage'
 import { useDispatch, useSelector } from 'react-redux'
@@ -16,9 +16,35 @@ function ChatInput() {
   const { messages, isLoading } = useSelector(state => state.message)
   const [selectedFile, setSelectedFile] = useState(null)
   const [listening, setListening] = useState(false)
+  const [rateLimitCooldowns, setRateLimitCooldowns] = useState({})
   const recognitionRef = useRef(null)
   const fileRef = useRef(null)
   const dispatch = useDispatch()
+
+  const currentAgentKey = selectedAgent.toLowerCase() === "auto" ? "chat" : selectedAgent.toLowerCase()
+  const activeCooldown = rateLimitCooldowns[currentAgentKey] || 0
+
+  // Live countdown timer for rate-limited agents
+  useEffect(() => {
+    const hasActiveCooldown = Object.values(rateLimitCooldowns).some(time => time > 0)
+    if (!hasActiveCooldown) return
+
+    const timer = setInterval(() => {
+      setRateLimitCooldowns(prev => {
+        const next = { ...prev }
+        let changed = false
+        for (const [k, v] of Object.entries(next)) {
+          if (v > 0) {
+            next[k] = v - 1
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [rateLimitCooldowns])
 
 
   useEffect(() => {
@@ -69,7 +95,7 @@ function ChatInput() {
 
 
   const handleSendMessage = async () => {
-     if (isLoading || (!value.trim() && !selectedFile)) {
+     if (isLoading || activeCooldown > 0 || (!value.trim() && !selectedFile)) {
       return
      }
 
@@ -96,7 +122,6 @@ function ChatInput() {
         dispatch(setConvTitle({ conversationId: conversation?._id, title: value.slice(0, 40) }))
       }
 
-
       const formData = new FormData()
       formData.append("prompt", value.trim())
       formData.append("conversationId", conversation?._id)
@@ -105,13 +130,28 @@ function ChatInput() {
         formData.append("file", fileToSend)
       }
 
-
-
       dispatch(addMessage({ role: "user", content: value.trim() }))
       setValue("")
-      const data = await sendMessage(formData)
-      dispatch(setArtifacts(data?.artifacts || []))
-      dispatch(addMessage({ role: "assistant", content: data?.answer, images: data?.images }))
+
+      const result = await sendMessage(formData)
+      if (result.success) {
+        dispatch(setArtifacts(result.data?.artifacts || []))
+        dispatch(addMessage({ role: "assistant", content: result.data?.answer, images: result.data?.images }))
+      } else {
+        if (result.status === 429) {
+          const cooldownSec = result.data?.remainingTime || parseInt(result.data?.retryAfter, 10) || 10
+          setRateLimitCooldowns(prev => ({ ...prev, [currentAgentKey]: cooldownSec }))
+          dispatch(addMessage({
+            role: "assistant",
+            content: `⚠️ **Rate Limit Exceeded (Edge Enforced)**\n\n${result.message || "Rate limit reached."}\n\n*Intercepted by: \`${result.data?.edgeNode || "edge-mumbai-01"}\` • Cooldown: ${cooldownSec}s*`
+          }))
+        } else {
+          dispatch(addMessage({
+            role: "assistant",
+            content: `❌ **Error**: ${result.message || "Failed to process request."}`
+          }))
+        }
+      }
     } catch (error) {
       console.error("Message request failed", error)
     } finally {
@@ -239,10 +279,23 @@ function ChatInput() {
         }
 
 
+        {activeCooldown > 0 && (
+          <div className="flex items-center justify-between text-xs px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-300">
+            <span className="flex items-center gap-1.5 font-medium">
+              <AlertTriangle size={14} className="text-amber-400 shrink-0" />
+              <span>{selectedAgent} agent rate-limited at edge. Cooling down...</span>
+            </span>
+            <span className="flex items-center gap-1 font-mono font-semibold bg-amber-500/20 text-amber-200 px-2 py-0.5 rounded-md text-[11px]">
+              <Clock size={11} /> {activeCooldown}s
+            </span>
+          </div>
+        )}
+
         <textarea
-          placeholder='Ask Anything...'
+          placeholder={activeCooldown > 0 ? `${selectedAgent} agent is in cooldown (${activeCooldown}s remaining)...` : 'Ask Anything...'}
           onChange={(e) => setValue(e.target.value)}
           value={value}
+          disabled={activeCooldown > 0}
           className="w-full bg-transparent outline-none resize-none text-[14px] text-slate-200 placeholder:text-slate-600 leading-relaxed [scrollbar-width:none] [&::-webkit-scrollbar]:hidden disabled:opacity-50"
           rows={3}
         />
@@ -266,12 +319,18 @@ function ChatInput() {
             </button>
           </div>
           <button
-            disabled={(!value.trim() && !selectedFile) || isLoading}
+            disabled={(!value.trim() && !selectedFile) || isLoading || activeCooldown > 0}
             onClick={handleSendMessage}
-            className={`flex items-center justify-center w-8 h-8 rounded-lg border-none cursor-pointer transition-all duration-150 ${value.trim() || selectedFile ? "bg-linear-to-br from-indigo-500 to-violet-700 hover:opacity-90 text-white" : "bg-white/[0.05] text-slate-600 cursor-not-allowed"}`}>
-          <Send size={15} />
-        </button>
-      </div>
+            className={`flex items-center justify-center min-w-[32px] h-8 px-2 rounded-lg border-none cursor-pointer transition-all duration-150 ${
+              activeCooldown > 0
+                ? "bg-amber-500/20 text-amber-400 cursor-not-allowed font-mono text-xs font-bold"
+                : value.trim() || selectedFile
+                ? "bg-linear-to-br from-indigo-500 to-violet-700 hover:opacity-90 text-white"
+                : "bg-white/[0.05] text-slate-600 cursor-not-allowed"
+            }`}>
+            {activeCooldown > 0 ? `${activeCooldown}s` : <Send size={15} />}
+          </button>
+        </div>
     
     </div>
     </div >

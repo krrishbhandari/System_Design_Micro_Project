@@ -12,23 +12,34 @@ import Artifact from '../components/Artifact';
 function Home() {
     const {userData}=useSelector(state=>state.user)
     const dispatch=useDispatch()
+    const [loginError, setLoginError] = React.useState(null)
+    const [isLoggingIn, setIsLoggingIn] = React.useState(false)
+
     const handleLogin = async (token) => {
         try {
             const { data } = await api.post("/api/auth/login", { token })
             dispatch(setUserdata(data))
+            setLoginError(null)
         } catch (error) {
-            console.log(error)
+            const message = error.response?.data?.message || error.message || "Unable to complete login."
+            console.error("Backend login failed", error)
+            setLoginError(message)
+            throw error
         }
     }
 
 
     const googleLogin = async () => {
+        setIsLoggingIn(true)
+        setLoginError(null)
         try {
             const data = await signInWithPopup(auth, googleProvider)
             const token = await data.user.getIdToken()
             await handleLogin(token)
         } catch (error) {
             console.error("Google login failed. Check the Firebase web app configuration and authorized domains.", error)
+        } finally {
+            setIsLoggingIn(false)
         }
     }
     return (
@@ -48,10 +59,11 @@ function Home() {
                         <p className='text-[13px] text-slate-500'>Please login to continue using the app.</p>
                     </div>
 
-                    <button className='w-full flex items-center justify-center gap-3 py-[11px] rounded-xl text-sm font-medium text-black/90 bg-white hover:bg-gray-200  transition-all duration-150 cursor-pointer' onClick={googleLogin}>
+                    <button disabled={isLoggingIn} className='w-full flex items-center justify-center gap-3 py-[11px] rounded-xl text-sm font-medium text-black/90 bg-white hover:bg-gray-200 disabled:opacity-60 transition-all duration-150 cursor-pointer' onClick={googleLogin}>
                         <FcGoogle size={15} />
-                        Continue With Google
+                        {isLoggingIn ? "Signing in..." : "Continue With Google"}
                     </button>
+                    {loginError && <p className='text-[12px] text-red-400 break-words'>{loginError}</p>}
                 </div>
             </div>}
           

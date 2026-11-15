@@ -1,0 +1,21 @@
+{
+  "name": "edge-node",
+  "version": "1.0.0",
+  "description": "Regional Edge Node - Token Bucket Rate Limiter with Local Leases",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-http-proxy": "^2.1.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

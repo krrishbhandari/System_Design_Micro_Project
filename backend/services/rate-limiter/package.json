@@ -1,0 +1,20 @@
+{
+  "name": "rate-limiter-coordinator",
+  "version": "1.0.0",
+  "description": "Control Plane Coordinator & Sync Service for Edge Rate Limiter",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongoose": "^9.9.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
